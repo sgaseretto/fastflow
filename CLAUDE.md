@@ -2,5 +2,5 @@
 - Before opening a PR, update the **changelog** with all changes made during the current session.
 - Keep the **documentation** in sync with any new features, changes, or refactors.
 - Maintain and expand **guides** that explain how to navigate the codebase and use new or updated functionality.
-- Use **Mermaid diagrams** within markdown files for architecture, flows, and visual explanations.
+- Always use **Mermaid diagrams** within markdown files for architecture, flows, and visual explanations.
 - After implementing new features or fixes—and before submitting a PR—update `docs/how_it_works` to reflect the project's internal mechanics.
