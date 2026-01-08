@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - Fastcore Refactor
+
+### Added
+
+#### Fastcore Integration & Type Dispatch System
+- **Type Dispatch System**: Using `plum-dispatch` for multiple dispatch operations on typed nodes
+- **Typed Node Classes**: `StartNode`, `EndNode`, `AgentNode`, `ToolNode`, `LLMNode`, `ConditionNode`, `InputNode`, `OutputNode`, `FilterNode`, `JoinNode`, `TransformNode`, `ProcessNode`, `DecisionNode`, `CodeNode`
+- **Type-dispatched operations**:
+  - `render(node)` - Generate HTML/FT representation for a node
+  - `execute(node, context, inputs)` - Execute node logic
+  - `validate(node)` - Validate node configuration
+  - `can_connect(source, target)` - Check if two nodes can be connected
+  - `get_node_style(node)` - Get CSS styling for a node
+  - `node_to_x6(node)` / `node_from_x6(data, node_type)` - X6 serialization
+- **Node Registry**: `NODE_TYPE_MAP` for looking up node classes by type string
+- **Custom Node Registration**: `register_node_type()` to add custom node types
+
+#### Two-Way Callback System (fastai-style)
+- **`FlowCallback` base class** with lifecycle hooks:
+  - `before_flow` / `after_flow` - Called at flow start/end
+  - `before_node` / `after_node` - Called around each node execution
+  - `before_edge` / `after_edge` - Called around edge traversal
+  - `on_error` / `on_cancel` - Error and cancellation handling
+- **`FlowState` dataclass** - Mutable execution state passed to callbacks
+- **Built-in Callbacks**:
+  - `SSECallback` - Server-Sent Events for browser updates
+  - `LoggingCallback` - Structured logging with configurable logger
+  - `TimingCallback` - Performance metrics and timing
+  - `RetryCallback` - Automatic retry on failure
+  - `ProgressCallback` - Progress percentage tracking
+  - `ValidationCallback` - Pre-execution node validation
+- **Control Flow Exceptions**:
+  - `CancelFlowException` - Stop entire flow execution
+  - `SkipNodeException` - Skip current node, continue flow
+  - `RetryNodeException` - Retry current node
+
+#### Layered API Architecture
+- **Layer 0 (Core Primitives)**: `raw_node_status()`, `raw_edge_status()`, `raw_complete()`, `raw_error()`, `to_x6_node()`, `to_x6_edge()`
+- **Layer 1 (State Management)**: `Flow`, `NodeData`, `EdgeData` with `store_attr` and `@patch` extensibility
+- **Layer 2 (Main API)**: Typed nodes, callbacks, `FlowExecutor`
+- **Layer 3 (Convenience)**: `quick_flow()`, `run_pipeline()`, `from_dict()`, `to_dict()`, `from_langgraph()`, `flow_from_steps()`
+
+#### Convenience Functions
+- **`quick_flow(steps)`** - Create `FlowExecutor` from list of step dictionaries
+- **`run_pipeline(handlers)`** - Create linear pipeline from async handler functions
+- **`flow_from_steps(steps)`** - Create `Flow` with automatic layout from step definitions
+- **`from_dict()` / `to_dict()`** - Flow serialization helpers
+- **`from_langgraph()`** - Convert LangGraph StateGraph to Flow (placeholder)
+
+#### Fastcore Ergonomics
+- **`store_attr()`** in `NodeData`, `EdgeData`, `Flow` - Eliminates `__init__` boilerplate
+- **`@patch` extensions** - Add methods without subclassing:
+  - `NodeData.validate()`, `NodeData.copy()`
+  - `EdgeData.validate()`, `EdgeData.copy()`
+  - `Flow.validate()`, `Flow.copy()`
+
+### Changed
+- **FlowExecutor** now accepts `callbacks` parameter for the callback system
+- **Dependencies**: Added `fastcore>=1.5.0` and `plum-dispatch>=2.0.0`
+- **Version**: Bumped to 0.2.0
+
+### Removed
+- **`@NodeType` decorator** - Use typed node classes from `fastflow.types` instead
+- **`get_node_types()`** - Use `NODE_TYPE_MAP` instead
+- **`get_node_type()`** - Use `NODE_TYPE_MAP` instead
+- **`clear_node_types()`** - No longer needed with typed node classes
+- **`compat.py`** - Backward compatibility module removed
+- **`node_types.py`** - Legacy node type registry removed
+
+### Migration Guide
+Use typed node classes instead of the old `@NodeType` decorator:
+
+```python
+# Old (removed)
+# @NodeType("agent", inputs=1, outputs=1)
+# def MyAgent(model="gpt-4"):
+#     return Div(model)
+
+# New (recommended)
+from dataclasses import dataclass
+from fastflow.types import AgentNode, render
+
+@dataclass
+class MyAgent(AgentNode):
+    custom_field: str = ""
+
+@render.register
+def _(node: MyAgent):
+    return Div(node.model, node.custom_field)
+```
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -40,13 +133,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ER Diagram**: `table`
 
 #### Comprehensive Example Application
-- **Tabbed interface** demonstrating 6 workflow types:
+- **Tabbed interface** demonstrating 7 workflow types:
   1. **LangGraph Style** - Agent workflow like LangGraph Builder
   2. **ER Diagram** - Database entity-relationship diagram
   3. **Data Processing DAG** - Data pipeline visualization
   4. **AI Model DAG** - ML training pipeline with status indicators
   5. **Agent Flow** - Complex agent orchestration with LLM, code, KB, MCP nodes
   6. **Flowchart** - Traditional flowchart with standard shapes
+  7. **Python Execution** - Python-based SSE execution with callbacks (NEW)
+
+#### Python Execution Demo Tab
+- **Full SSE-based execution** - Real-time Python pipeline execution streamed to browser
+- **Custom callback example** - `StatusUpdateCallback` demonstrating two-way callback pattern
+- **Typed nodes** - Uses `InputNode`, `FilterNode`, `TransformNode`, `OutputNode` from types.py
+- **Multiple callbacks** - `TimingCallback`, `LoggingCallback`, `ProgressCallback`, `SSECallback` working together
+- **Handler functions** - Real async Python handlers (`load_handler`, `filter_handler`, etc.) processing data
+
+#### Type Dispatch Integration for UI Components
+- **`node_from_typed(typed_node)`** - Convert typed FlowNode instances to UI Node components
+- **`nodes_from_typed(typed_nodes)`** - Convert list of typed FlowNodes to UI components
+- **`validate_typed_node(typed_node)`** - Validate typed node using type-dispatched `validate()`
+- Provides seamless bridge between Layer 2 typed nodes and UI layer
 
 #### Comprehensive Tutorials
 - **6 step-by-step tutorials** in `docs/tutorials/`:
@@ -129,6 +236,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uses `zoomToFit` with 40px padding and max scale of 1 (won't zoom beyond 100%)
 
 ### Fixed
+- **Fixed ER table node creation from palette** - Dragging a table from palette now creates proper ER table nodes with header, columns, and four-way ports (was creating empty rectangles with timestamp IDs)
+- **Added Edit Column option to ER tables** - Right-click context menu now includes "Edit Column" option for modifying existing columns
 - **Critical**: Fixed X6 CDN URL - X6 v2 uses ESM format which doesn't expose global variables via script tags. Now using X6 v1.x with proper UMD build from unpkg (`/dist/x6.js`)
 - Fixed port group names in `fastflow.js` helper functions to match main initialization (`top`/`bottom` instead of `in`/`out`)
 - Fixed node shape in helper functions to use built-in `rect` instead of unregistered `fastflow-node`

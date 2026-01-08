@@ -22,9 +22,6 @@ def test_import():
         Flow,
         NodeData,
         EdgeData,
-        NodeType,
-        get_node_types,
-        get_node_type,
     )
 
     assert FlowEditor is not None
@@ -58,26 +55,6 @@ def test_edge_creation():
     assert edge["target"] == "b"
     assert edge["label"] == "next"
     assert edge["dashed"] == True
-
-
-def test_node_type_decorator():
-    """Test NodeType decorator registration."""
-    from fastflow import NodeType, get_node_type, clear_node_types
-    from fasthtml.common import Div
-
-    # Clear existing types
-    clear_node_types()
-
-    @NodeType("test-type", inputs=2, outputs=3, icon="🔧")
-    def TestNode(label: str = "Test"):
-        return Div(label)
-
-    info = get_node_type("test-type")
-    assert info is not None
-    assert info.name == "test-type"
-    assert info.inputs == 2
-    assert info.outputs == 3
-    assert info.icon == "🔧"
 
 
 def test_flow_state():

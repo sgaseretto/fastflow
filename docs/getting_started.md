@@ -131,35 +131,32 @@ FlowEditor(
 
 ## Custom Node Types
 
-Create reusable node types with the `@NodeType` decorator:
+Define custom node types using typed node classes with type dispatch:
 
 ```python
-from fastflow import NodeType
+from dataclasses import dataclass
+from fastflow.types import FlowNode, render, execute, register_node_type
+from fasthtml.common import Div
 
-@NodeType("llm", inputs=1, outputs=1, icon="🧠")
-def LLMNode(model: str = "gpt-4", temperature: float = 0.7):
-    """An LLM processing node."""
-    return Div(
-        Div("🧠 LLM", cls="node-title"),
-        Div(
-            Label("Model"),
-            Select(
-                Option("gpt-4", selected=model == "gpt-4"),
-                Option("gpt-3.5-turbo"),
-                Option("claude-3"),
-                name="model"
-            ),
-            Label("Temperature"),
-            Input(type="range", min="0", max="2", step="0.1",
-                  value=str(temperature), name="temperature"),
-            cls="node-body"
-        )
-    )
+@dataclass
+class MyLLMNode(FlowNode):
+    node_type: str = "my-llm"
+    model: str = "gpt-4"
+    temperature: float = 0.7
 
-# Use it
-Node("my-llm", x=200, y=100, label="LLM", node_type="llm",
-     data={"model": "gpt-4"})
+# Register for string-based lookup
+register_node_type("my-llm", MyLLMNode)
+
+# Type-dispatched render
+@render.register
+def _(node: MyLLMNode):
+    return Div(f"LLM: {node.model} (temp={node.temperature})")
+
+# Use in flow
+Node("llm1", x=200, y=100, label="LLM", node_type="my-llm")
 ```
+
+See the [Architecture Guide](how_it_works/architecture.md#type-dispatch-system) for more details on type dispatch.
 
 ## Working with Flow State
 
@@ -206,6 +203,12 @@ Follow our detailed tutorials to build different types of workflow editors:
 | [AI/ML Training Pipeline](tutorials/ai-model-dag.md) | ML workflows with conditional branches | Intermediate |
 | [Agent Orchestration](tutorials/agent-flow.md) | Complex agent flows with tools | Advanced |
 | [Traditional Flowchart](tutorials/flowchart.md) | Classic flowcharts with standard shapes | Beginner |
+
+### Python Execution with SSE
+
+For Python-driven workflow execution with real-time visual updates:
+
+- [Python Execution Guide](how_it_works/python_execution.md) - Learn about `FlowExecutor`, callbacks, and SSE
 
 ### More Resources
 

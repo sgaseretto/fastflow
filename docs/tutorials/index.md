@@ -23,6 +23,10 @@ mindmap
       ML Training Pipeline
         Model training
         Conditional branches
+    Python Execution
+      Type dispatch
+      Two-way callbacks
+      Real-time SSE
     Diagrams
       ER Diagram
         Table nodes
@@ -129,6 +133,20 @@ Create a classic flowchart editor with:
 
 ---
 
+### 7. [Python Execution with SSE](./python-execution.md)
+
+Build a Python-driven pipeline with real-time visual updates:
+- Type-dispatched nodes (InputNode, FilterNode, etc.)
+- Async handler functions for actual work
+- FlowExecutor with dependency ordering
+- Two-way callback system (fastai-style)
+- Real-time SSE streaming to browser
+
+**Difficulty**: Intermediate
+**Time**: 30 minutes
+
+---
+
 ## Tutorial Structure
 
 Each tutorial follows this structure:
@@ -182,6 +200,15 @@ def post(event: str, data: str, flow: str):
 
 serve()
 ```
+
+## Related Documentation
+
+For deeper dives into specific topics:
+
+- [Python Execution Deep Dive](../how_it_works/python_execution.md) - Advanced callback API, error handling, control flow exceptions
+- [Architecture Guide](../how_it_works/architecture.md) - Overall Fastflow architecture and design
+
+---
 
 ## Getting Help
 
