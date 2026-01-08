@@ -324,6 +324,122 @@ async def execute():
     return EventStream(run())
 ```
 
+## Callback System
+
+FlowExecutor supports a **two-way callback system** inspired by fastai. Callbacks can read and modify execution state at each stage.
+
+### Built-in Callbacks
+
+```python
+from fastflow import FlowExecutor, ExecutionStep
+from fastflow.callbacks import (
+    SSECallback,        # Real-time browser updates (auto-added)
+    LoggingCallback,    # Structured logging
+    TimingCallback,     # Performance metrics
+    RetryCallback,      # Auto-retry on failure
+    ProgressCallback,   # Progress percentage tracking
+)
+
+executor = FlowExecutor(
+    graph_id="my-flow",
+    steps=[...],
+    callbacks=[
+        SSECallback(),
+        LoggingCallback(),
+        TimingCallback(),
+        ProgressCallback(),
+    ]
+)
+```
+
+### Custom Callbacks
+
+Create custom callbacks by subclassing `FlowCallback`:
+
+```python
+from fastflow.callbacks import FlowCallback, FlowState
+
+class MetricsCallback(FlowCallback):
+    """Collect execution metrics."""
+    order = 20  # Higher = runs later
+
+    def __init__(self):
+        self.metrics = {}
+
+    def before_flow(self, state: FlowState):
+        """Called once before execution starts."""
+        state.context["started_at"] = time.time()
+
+    def before_node(self, state: FlowState):
+        """Called before each node executes."""
+        node_id = state.current_step.node_id
+        self.metrics[f"{node_id}_start"] = time.time()
+
+    def after_node(self, state: FlowState):
+        """Called after each node completes."""
+        node_id = state.current_step.node_id
+        elapsed = time.time() - self.metrics[f"{node_id}_start"]
+        state.context["step_times"][node_id] = elapsed
+
+    def after_flow(self, state: FlowState):
+        """Called once after execution completes."""
+        save_metrics(self.metrics)
+
+    def on_error(self, state: FlowState, exc: Exception):
+        """Called when an error occurs."""
+        log_error(exc, state.current_step.node_id)
+```
+
+### Control Flow Exceptions
+
+Callbacks can control execution flow using special exceptions:
+
+```python
+from fastflow.callbacks import (
+    FlowCallback, FlowState,
+    SkipNodeException,    # Skip current node
+    CancelFlowException,  # Cancel entire flow
+    RetryNodeException,   # Retry current node
+)
+
+class ConditionalCallback(FlowCallback):
+    def before_node(self, state: FlowState):
+        # Skip optional nodes based on context
+        if state.current_step.node_id == "optional":
+            if not state.context.get("run_optional"):
+                raise SkipNodeException("Skipping optional step")
+
+        # Cancel flow if too many errors
+        if len(state.errors) > 3:
+            raise CancelFlowException("Too many errors")
+
+    def on_error(self, state: FlowState, exc: Exception):
+        # Auto-retry transient errors
+        if is_transient_error(exc):
+            raise RetryNodeException("Retrying after transient error")
+```
+
+### FlowState Object
+
+The `FlowState` object is passed to all callbacks and contains mutable execution state:
+
+```python
+@dataclass
+class FlowState:
+    graph_id: str                    # Flow identifier
+    steps: list[ExecutionStep]       # All execution steps
+    results: dict[str, Any]          # Results from each node
+    errors: dict[str, Exception]     # Errors from each node
+    current_step: ExecutionStep      # Currently executing step
+    current_node: FlowNode           # Typed node (if any)
+    context: dict                    # Shared context (mutable!)
+    cancelled: bool                  # Whether flow was cancelled
+    node_times: dict[str, float]     # Timing per node
+    progress: float                  # 0.0 to 1.0
+```
+
+Callbacks can modify `state.context`, `state.results`, and other fields to influence execution.
+
 ## Best Practices
 
 1. **Keep handlers focused** - Each handler should do one thing
@@ -332,6 +448,8 @@ async def execute():
 4. **Test handlers independently** - Unit test each handler function
 5. **Use appropriate durations** - Set realistic durations for simulations
 6. **Clean up resources** - Use try/finally for cleanup in handlers
+7. **Order callbacks carefully** - Use `order` attribute to control execution order
+8. **Don't block in callbacks** - Keep callback methods fast
 
 ## Example: Real ML Pipeline
 

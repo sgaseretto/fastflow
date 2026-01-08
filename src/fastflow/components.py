@@ -9,8 +9,6 @@ from fasthtml.common import Div, Script, to_xml, Button, Span, H4, P, Ul, Li
 from typing import Optional, Any, Literal
 import json
 
-from .node_types import get_node_type, render_node_html
-
 
 # Type aliases for better documentation
 PortPosition = Literal["top", "right", "bottom", "left"]
@@ -1247,6 +1245,7 @@ def FlowEditor(
                 items = [
                     {{ label: '✏️ Rename Table', action: 'rename' }},
                     {{ label: '➕ Add Column', action: 'addColumn' }},
+                    {{ label: '📝 Edit Column', action: 'editColumn' }},
                     {{ label: '➖ Remove Column', action: 'removeColumn' }},
                     {{ label: '🗑️ Delete Table', action: 'delete' }},
                 ];
@@ -1293,6 +1292,8 @@ def FlowEditor(
                         sendToServer('change', {{ type: 'edgeStyleChanged', id: cell.id, dashed: true }});
                     }} else if (item.action === 'addColumn' && isTableNode) {{
                         showAddColumnDialog(cell);
+                    }} else if (item.action === 'editColumn' && isTableNode) {{
+                        showEditColumnDialog(cell);
                     }} else if (item.action === 'removeColumn' && isTableNode) {{
                         showRemoveColumnDialog(cell);
                     }}
@@ -1534,6 +1535,180 @@ def FlowEditor(
                     overlay.remove();
                 }};
             }});
+        }}
+
+        // Dialog for editing a column in a table node
+        function showEditColumnDialog(node) {{
+            const data = node.getData() || {{}};
+            const columns = data.columns || [];
+
+            if (columns.length === 0) {{
+                alert('This table has no columns to edit. Add a column first.');
+                return;
+            }}
+
+            const overlay = document.createElement('div');
+            overlay.id = 'fastflow-column-dialog-overlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.4);
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white;
+                border-radius: 12px;
+                padding: 24px;
+                min-width: 360px;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            `;
+
+            // Build column selection list
+            let columnListHtml = columns.map((col, idx) => {{
+                let keyIcons = '';
+                if (col.pk) keyIcons += '🔑 ';
+                if (col.fk) keyIcons += '🔗 ';
+                return `
+                    <div class="edit-col-item" data-idx="${{idx}}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${{idx % 2 === 0 ? '#f8fafc' : '#fff'}}; border-radius: 4px; margin-bottom: 4px; cursor: pointer; transition: background 0.2s;">
+                        <span style="font-size: 13px; color: #334155;">${{keyIcons}}${{col.name}} <span style="color: #94a3b8; font-size: 11px;">(${{col.type}})</span></span>
+                        <span style="color: #3b82f6; font-size: 12px;">Edit →</span>
+                    </div>
+                `;
+            }}).join('');
+
+            dialog.innerHTML = `
+                <h3 style="margin: 0 0 16px 0; font-size: 16px; color: #1e293b;">Edit Column</h3>
+                <p style="font-size: 13px; color: #64748b; margin: 0 0 12px 0;">Select a column to edit:</p>
+                <div id="column-list" style="margin-bottom: 16px;">
+                    ${{columnListHtml}}
+                </div>
+                <div id="edit-form" style="display: none;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-size: 12px; font-weight: 500; color: #64748b; margin-bottom: 4px;">Column Name</label>
+                        <input type="text" id="edit-col-name" style="width: 100%; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-size: 12px; font-weight: 500; color: #64748b; margin-bottom: 4px;">Data Type</label>
+                        <select id="edit-col-type" style="width: 100%; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; box-sizing: border-box; background: white;">
+                            <option value="int">int</option>
+                            <option value="bigint">bigint</option>
+                            <option value="varchar(255)">varchar(255)</option>
+                            <option value="text">text</option>
+                            <option value="boolean">boolean</option>
+                            <option value="timestamp">timestamp</option>
+                            <option value="date">date</option>
+                            <option value="decimal">decimal</option>
+                            <option value="float">float</option>
+                            <option value="json">json</option>
+                            <option value="uuid">uuid</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #334155; cursor: pointer;">
+                            <input type="checkbox" id="edit-col-pk" style="width: 16px; height: 16px;">
+                            🔑 Primary Key
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #334155; cursor: pointer;">
+                            <input type="checkbox" id="edit-col-fk" style="width: 16px; height: 16px;">
+                            🔗 Foreign Key
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button id="col-back" style="display: none; padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 14px;">← Back</button>
+                    <button id="col-save" style="display: none; padding: 8px 16px; border: none; background: #3b82f6; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;">Save</button>
+                    <button id="col-close" style="padding: 8px 16px; border: 1px solid #e2e8f0; background: white; border-radius: 6px; cursor: pointer; font-size: 14px;">Close</button>
+                </div>
+            `;
+
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+
+            let selectedIdx = -1;
+            const columnList = dialog.querySelector('#column-list');
+            const editForm = dialog.querySelector('#edit-form');
+            const backBtn = dialog.querySelector('#col-back');
+            const saveBtn = dialog.querySelector('#col-save');
+            const closeBtn = dialog.querySelector('#col-close');
+
+            // Show edit form for selected column
+            function showEditForm(idx) {{
+                selectedIdx = idx;
+                const col = columns[idx];
+                dialog.querySelector('#edit-col-name').value = col.name || '';
+                dialog.querySelector('#edit-col-type').value = col.type || 'varchar(255)';
+                dialog.querySelector('#edit-col-pk').checked = !!col.pk;
+                dialog.querySelector('#edit-col-fk').checked = !!col.fk;
+
+                columnList.style.display = 'none';
+                editForm.style.display = 'block';
+                backBtn.style.display = 'inline-block';
+                saveBtn.style.display = 'inline-block';
+                dialog.querySelector('p').textContent = `Editing: ${{col.name}}`;
+            }}
+
+            // Go back to column list
+            function showColumnList() {{
+                selectedIdx = -1;
+                columnList.style.display = 'block';
+                editForm.style.display = 'none';
+                backBtn.style.display = 'none';
+                saveBtn.style.display = 'none';
+                dialog.querySelector('p').textContent = 'Select a column to edit:';
+            }}
+
+            dialog.querySelectorAll('.edit-col-item').forEach(item => {{
+                item.onmouseenter = () => item.style.background = '#e0f2fe';
+                item.onmouseleave = () => {{
+                    const idx = parseInt(item.getAttribute('data-idx'));
+                    item.style.background = idx % 2 === 0 ? '#f8fafc' : '#fff';
+                }};
+                item.onclick = () => {{
+                    const idx = parseInt(item.getAttribute('data-idx'));
+                    showEditForm(idx);
+                }};
+            }});
+
+            backBtn.onclick = showColumnList;
+            closeBtn.onclick = () => overlay.remove();
+            overlay.onclick = (e) => {{ if (e.target === overlay) overlay.remove(); }};
+
+            saveBtn.onclick = () => {{
+                if (selectedIdx < 0) return;
+
+                const newName = dialog.querySelector('#edit-col-name').value.trim();
+                const newType = dialog.querySelector('#edit-col-type').value;
+                const isPk = dialog.querySelector('#edit-col-pk').checked;
+                const isFk = dialog.querySelector('#edit-col-fk').checked;
+
+                if (!newName) {{
+                    alert('Column name cannot be empty.');
+                    return;
+                }}
+
+                const newColumns = [...columns];
+                newColumns[selectedIdx] = {{
+                    name: newName,
+                    type: newType,
+                    pk: isPk || undefined,
+                    fk: isFk || undefined,
+                }};
+
+                rebuildTableNode(node, newColumns);
+                overlay.remove();
+            }};
+
+            document.onkeydown = (e) => {{
+                if (e.key === 'Escape') overlay.remove();
+            }};
         }}
 
         // Helper functions exposed to window.fastflow
@@ -1948,67 +2123,85 @@ def NodePalette(
                 }});
             }}
 
-            // Add node
-            graph.addNode({{
-                id: nodeId,
-                shape: 'rect',
-                x: point.x - 80,
-                y: point.y - 25,
-                width: isStartEnd ? 120 : 160,
-                height: isStartEnd ? 40 : 50,
-                attrs: {{
-                    body: {{
-                        fill: style.fill,
-                        stroke: style.stroke,
-                        strokeWidth: 2,
-                        rx: style.rx,
-                        ry: style.ry,
-                    }},
-                    label: {{
-                        text: nodeLabel,
-                        fill: style.textColor,
-                        fontSize: 14,
-                        fontWeight: isStartEnd ? 600 : 500,
-                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                    }},
-                }},
-                ports: {{
-                    groups: {{
-                        top: {{
-                            position: 'top',
-                            attrs: {{
-                                circle: {{
-                                    r: 5,
-                                    magnet: true,
-                                    stroke: '#5F95FF',
-                                    strokeWidth: 1,
-                                    fill: '#fff',
-                                    style: {{ visibility: 'hidden' }},
-                                }},
-                            }},
-                        }},
-                        bottom: {{
-                            position: 'bottom',
-                            attrs: {{
-                                circle: {{
-                                    r: 5,
-                                    magnet: true,
-                                    stroke: '#5F95FF',
-                                    strokeWidth: 1,
-                                    fill: '#fff',
-                                    style: {{ visibility: 'hidden' }},
-                                }},
-                            }},
-                        }},
-                    }},
-                    items: ports,
-                }},
-                data: {{
+            // Handle table nodes specially - use createERTableNode
+            if (nodeType === 'table') {{
+                const tableLabel = 'New Table';
+                createERTableNode({{
+                    id: nodeId,
                     name: nodeId,
-                    label: nodeLabel,
-                    nodeType: nodeType,
-                }},
-            }});
+                    label: tableLabel,
+                    x: point.x - 110,
+                    y: point.y - 30,
+                    width: 220,
+                    data: {{
+                        columns: [],
+                        headerFill: '#1890ff',
+                        headerColor: '#fff',
+                    }},
+                }}, style);
+            }} else {{
+                // Add regular node
+                graph.addNode({{
+                    id: nodeId,
+                    shape: 'rect',
+                    x: point.x - 80,
+                    y: point.y - 25,
+                    width: isStartEnd ? 120 : 160,
+                    height: isStartEnd ? 40 : 50,
+                    attrs: {{
+                        body: {{
+                            fill: style.fill,
+                            stroke: style.stroke,
+                            strokeWidth: 2,
+                            rx: style.rx,
+                            ry: style.ry,
+                        }},
+                        label: {{
+                            text: nodeLabel,
+                            fill: style.textColor,
+                            fontSize: 14,
+                            fontWeight: isStartEnd ? 600 : 500,
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        }},
+                    }},
+                    ports: {{
+                        groups: {{
+                            top: {{
+                                position: 'top',
+                                attrs: {{
+                                    circle: {{
+                                        r: 5,
+                                        magnet: true,
+                                        stroke: '#5F95FF',
+                                        strokeWidth: 1,
+                                        fill: '#fff',
+                                        style: {{ visibility: 'hidden' }},
+                                    }},
+                                }},
+                            }},
+                            bottom: {{
+                                position: 'bottom',
+                                attrs: {{
+                                    circle: {{
+                                        r: 5,
+                                        magnet: true,
+                                        stroke: '#5F95FF',
+                                        strokeWidth: 1,
+                                        fill: '#fff',
+                                        style: {{ visibility: 'hidden' }},
+                                    }},
+                                }},
+                            }},
+                        }},
+                        items: ports,
+                    }},
+                    data: {{
+                        name: nodeId,
+                        label: nodeLabel,
+                        nodeType: nodeType,
+                    }},
+                }});
+            }}
         }});
     }}
 
@@ -2462,3 +2655,148 @@ def FlowchartNode(
         outputs=port_cfg.get("outputs", 1),
         **kwargs
     )
+
+
+# =============================================================================
+# Type Dispatch Integration
+# =============================================================================
+# These functions bridge Layer 2 typed nodes (types.py) with UI components
+
+def node_from_typed(typed_node) -> dict:
+    """
+    Convert a typed FlowNode (from types.py) to a UI Node component.
+
+    This provides seamless integration between Layer 2 typed nodes
+    and the UI layer. The typed node's class determines the node_type,
+    and its attributes are mapped to UI Node parameters.
+
+    Args:
+        typed_node: A FlowNode subclass instance from fastflow.types
+            (e.g., AgentNode, ToolNode, InputNode, etc.)
+
+    Returns:
+        dict: A Node component dict ready for use in FlowEditor
+
+    Example:
+        ```python
+        from fastflow.types import AgentNode, InputNode, FilterNode
+        from fastflow.components import node_from_typed, FlowEditor, Edge
+
+        # Create typed nodes
+        agent = AgentNode(id="agent1", x=200, y=100, label="My Agent", model="gpt-4")
+        input_node = InputNode(id="input1", x=50, y=100, label="Load Data")
+
+        # Convert to UI nodes
+        FlowEditor(
+            node_from_typed(agent),
+            node_from_typed(input_node),
+            Edge(source="input1", target="agent1"),
+            id="my-flow"
+        )
+        ```
+    """
+    # Try to get node style from types module
+    try:
+        from .types import get_node_style, NODE_STYLES as TYPE_STYLES
+        style = get_node_style(typed_node)
+    except ImportError:
+        style = NODE_STYLES.get(typed_node.node_type, NODE_STYLES.get("default", {}))
+
+    # Extract common attributes
+    node_id = typed_node.id
+    x = getattr(typed_node, "x", 0)
+    y = getattr(typed_node, "y", 0)
+    width = getattr(typed_node, "width", 160)
+    height = getattr(typed_node, "height", 60)
+    label = getattr(typed_node, "label", "") or node_id
+    inputs = getattr(typed_node, "inputs", 1)
+    outputs = getattr(typed_node, "outputs", 1)
+
+    # Get node type from class (e.g., AgentNode -> "agent")
+    node_type = typed_node.node_type
+
+    # Build data dict from extra attributes
+    data = getattr(typed_node, "data", {}).copy() if hasattr(typed_node, "data") else {}
+
+    # Add type-specific attributes to data
+    base_attrs = {"id", "x", "y", "width", "height", "label", "data", "inputs", "outputs"}
+    for attr, value in typed_node.__dict__.items():
+        if attr not in base_attrs and not attr.startswith("_"):
+            data[attr] = value
+
+    # Create the Node dict
+    return Node(
+        name=node_id,
+        x=x,
+        y=y,
+        label=label,
+        node_type=node_type,
+        width=width,
+        height=height,
+        inputs=inputs,
+        outputs=outputs,
+        fill=style.get("fill"),
+        stroke=style.get("stroke"),
+        text_color=style.get("textColor"),
+        data=data
+    )
+
+
+def nodes_from_typed(typed_nodes: list) -> list[dict]:
+    """
+    Convert a list of typed FlowNodes to UI Node components.
+
+    Convenience function for converting multiple typed nodes at once.
+
+    Args:
+        typed_nodes: List of FlowNode subclass instances
+
+    Returns:
+        list: List of Node component dicts
+
+    Example:
+        ```python
+        from fastflow.types import StartNode, AgentNode, EndNode
+        from fastflow.components import nodes_from_typed, FlowEditor
+
+        nodes = [
+            StartNode(id="start", x=100, y=50),
+            AgentNode(id="agent", x=100, y=150, model="gpt-4"),
+            EndNode(id="end", x=100, y=250),
+        ]
+
+        ui_nodes = nodes_from_typed(nodes)
+        FlowEditor(*ui_nodes, id="my-flow")
+        ```
+    """
+    return [node_from_typed(n) for n in typed_nodes]
+
+
+def validate_typed_node(typed_node) -> list[str]:
+    """
+    Validate a typed FlowNode before creating a UI component.
+
+    Uses the type-dispatched validate() function from types.py.
+
+    Args:
+        typed_node: A FlowNode subclass instance
+
+    Returns:
+        list: List of validation error messages (empty if valid)
+
+    Example:
+        ```python
+        from fastflow.types import AgentNode
+        from fastflow.components import validate_typed_node
+
+        agent = AgentNode(id="agent1", model="", temperature=5.0)  # Invalid!
+        errors = validate_typed_node(agent)
+        # errors = ["AgentNode must specify a model", "Temperature must be between 0 and 2"]
+        ```
+    """
+    try:
+        from .types import validate
+        return validate(typed_node)
+    except ImportError:
+        # types.py not available, skip validation
+        return []

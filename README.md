@@ -8,6 +8,9 @@ Fastflow is a Python library that wraps [AntV X6](https://x6.antv.antgroup.com/e
 
 - **FastHTML-style API**: Use familiar FT components like `FlowEditor()`, `Node()`, `Edge()`
 - **Python-Based Execution**: Run workflows entirely in Python with SSE for real-time visual updates
+- **Type Dispatch System**: Define typed nodes with multiple-dispatch operations (render, execute, validate)
+- **Two-Way Callbacks**: fastai-style callbacks that can read AND modify execution state
+- **Layered API**: From raw primitives to convenience functions - use the right level of abstraction
 - **Multiple Workflow Types**: LangGraph agents, ER diagrams, data pipelines, flowcharts
 - **Specialized Components**: `TableNode`, `DAGNode`, `AgentNode`, `FlowchartNode`
 - **Rich Node Styling**: 25+ built-in node types with icons and status indicators
@@ -15,6 +18,7 @@ Fastflow is a Python library that wraps [AntV X6](https://x6.antv.antgroup.com/e
 - **Drag-and-Drop**: Built-in `NodePalette` with groupable items (`PaletteGroup`)
 - **HTMX Integration**: Automatic event handling via HTMX for server-side logic
 - **Interactive Editing**: Double-click to rename, right-click context menus, keyboard shortcuts
+- **Extensible via @patch**: Add methods to existing classes without subclassing
 - **Serialization**: Import/export workflows as JSON
 
 ## Installation
@@ -67,36 +71,6 @@ def post(flow: str):
     return ""
 
 serve()
-```
-
-## Custom Node Types
-
-Define reusable node types with the `@NodeType` decorator:
-
-```python
-from fastflow import NodeType
-
-@NodeType("llm", inputs=1, outputs=1, icon="🧠")
-def LLMNode(model: str = "gpt-4", temperature: float = 0.7):
-    """An LLM processing node."""
-    return Div(
-        Div("🧠 LLM", cls="node-title"),
-        Div(
-            Label("Model"),
-            Select(
-                Option("gpt-4", selected=model == "gpt-4"),
-                Option("gpt-3.5-turbo"),
-                name="model"
-            ),
-            Label("Temperature"),
-            Input(type="range", min="0", max="2", value=str(temperature)),
-            cls="node-body"
-        )
-    )
-
-# Use it in your flow
-Node("my-llm", x=200, y=100, label="LLM", node_type="llm",
-     data={"model": "gpt-4"})
 ```
 
 ## Node Palette
@@ -203,6 +177,90 @@ async def execute():
 ```
 
 See the [Python Execution Guide](docs/how_it_works/python_execution.md) for more details.
+
+## Callback System
+
+Add callbacks to FlowExecutor for logging, timing, retries, and custom behavior:
+
+```python
+from fastflow import FlowExecutor, ExecutionStep
+from fastflow.callbacks import SSECallback, LoggingCallback, TimingCallback, RetryCallback
+
+executor = FlowExecutor(
+    graph_id="my-pipeline",
+    steps=[
+        ExecutionStep("load", handler=load_data),
+        ExecutionStep("process", depends_on=["load"], handler=process_data),
+        ExecutionStep("save", depends_on=["process"], handler=save_data),
+    ],
+    callbacks=[
+        SSECallback(),         # Real-time browser updates
+        LoggingCallback(),     # Structured logging
+        TimingCallback(),      # Performance metrics
+        RetryCallback(max_retries=3),  # Auto-retry on failure
+    ]
+)
+
+@rt("/execute")
+async def execute():
+    return EventStream(executor.run(context={"path": "data.csv"}))
+```
+
+### Custom Callbacks
+
+Create your own callbacks by subclassing `FlowCallback`:
+
+```python
+from fastflow.callbacks import FlowCallback, FlowState, SkipNodeException
+
+class ConditionalCallback(FlowCallback):
+    def before_node(self, state: FlowState):
+        # Skip certain nodes based on context
+        if state.current_step.node_id == "optional":
+            if not state.context.get("run_optional"):
+                raise SkipNodeException("Skipping optional step")
+
+    def after_node(self, state: FlowState):
+        # Modify results
+        node_id = state.current_step.node_id
+        state.results[node_id]["processed_at"] = time.time()
+```
+
+## Typed Nodes (Advanced)
+
+Define custom node types with type dispatch for render, execute, and validate operations:
+
+```python
+from dataclasses import dataclass
+from fastflow.types import FlowNode, render, execute, validate, register_node_type
+
+@dataclass
+class MyAgentNode(FlowNode):
+    node_type: str = "my-agent"
+    model: str = "gpt-4"
+    temperature: float = 0.7
+
+# Register for string-based lookup
+register_node_type("my-agent", MyAgentNode)
+
+# Type-dispatched render
+@render.register
+def _(node: MyAgentNode):
+    return Div(f"🤖 {node.model} (temp={node.temperature})")
+
+# Type-dispatched execute
+@execute.register
+async def _(node: MyAgentNode, context: dict, inputs: dict):
+    return await call_llm(node.model, node.temperature, inputs)
+
+# Type-dispatched validation
+@validate.register
+def _(node: MyAgentNode) -> list[str]:
+    errors = []
+    if node.temperature < 0 or node.temperature > 2:
+        errors.append("Temperature must be between 0 and 2")
+    return errors
+```
 
 ## Specialized Components
 
@@ -333,22 +391,6 @@ Edge(
 )
 ```
 
-### `@NodeType`
-
-Decorator to register custom node types.
-
-```python
-@NodeType(
-    name: str,                    # Type identifier
-    inputs: int = 0,              # Default input count
-    outputs: int = 0,             # Default output count
-    icon: str = None,             # Icon for palette
-    color: str = None,            # Theme color
-)
-def MyNode(**data) -> FT:
-    return Div(...)  # Node content
-```
-
 ## State Management
 
 Fastflow provides dataclasses for working with flow state:
@@ -459,13 +501,14 @@ See the full [tutorial index](docs/tutorials/index.md) for more details.
 
 See the `examples/` directory for complete examples:
 
-- **basic/app.py**: Comprehensive tabbed demo with 6 workflow types:
+- **basic/app.py**: Comprehensive tabbed demo with 7 workflow types:
   1. **LangGraph Style** - Agent workflow like LangGraph Builder
   2. **ER Diagram** - Database entity-relationship diagram
   3. **Data Processing DAG** - Data pipeline visualization
   4. **AI Model DAG** - ML training pipeline with status indicators
   5. **Agent Flow** - Complex agent orchestration
   6. **Flowchart** - Traditional flowchart with standard shapes
+  7. **Python Execution** - Real-time SSE execution with callbacks and typed nodes
 
 ## Development
 

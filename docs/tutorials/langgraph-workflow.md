@@ -460,6 +460,6 @@ serve()
 - Add an **LLM node** to call AI models
 - Implement **conditional routing** based on agent output
 - **Save/load workflows** to a database
-- Add **custom node types** with the `@NodeType` decorator
+- Add **custom node types** using typed node classes from `fastflow.types`
 
 Continue to the next tutorial: [ER Diagram Builder](./er-diagram.md)
